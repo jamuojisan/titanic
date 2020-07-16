@@ -6,6 +6,8 @@ import pandas as pd
 from sklearn.preprocessing import LabelEncoder
 from xgboost import XGBClassifier
 import numpy as np
+from sklearn.metrics import log_loss, accuracy_score
+from sklearn.model_selection import KFold
 
 # DIR
 DIR_HOME = os.getcwd() + os.sep + ".."
@@ -24,16 +26,38 @@ def main():
     #前処理
     train_x, test_x= preprocessing(train_x, test_x)
 
-    #モデルの作成と学習
-    model = XGBClassifier(n_estimators=20, random_state=71)
-    model.fit(train_x, train_y)
-    print(model)
+    #各foldのスコアを保存するリスト
+    scores_accuracy = []
+    scores_logloss = []
 
-    #予測値を出す
-    pred = model.predict_proba(test_x)[:, 1]
-    
-    #テストデータの予測値をにちに変換
-    pred_label = np.where(pred > 0.5, 1, 0)
+    #クロスバリデーション
+    #学習データを４分割、うち１つをバリデーションとすることを、四回繰り返す。
+
+    kf = KFold(n_splits=4, shuffle = True, random_state= 71)
+    for tr_idx, va_idx, in kf.split(train_x):
+        #学習データを学習データとバリデーションデータに分割
+        tr_x, va_x = train_x.iloc[tr_idx], train_x.iloc[va_idx]
+        tr_y, va_y = train_y.iloc[tr_idx], train_y.iloc[va_idx]
+        #学習
+        model = XGBClassifier(n_estimators=20, random_state=71)
+        model.fit(tr_x, tr_y)
+
+        #バリデーションデータの予測値を確率で出力
+        va_pred = model.predict_proba(va_x)[:, 1]
+
+        #バリデーションでのスコア
+        logloss = log_loss(va_y, va_pred)
+        accuracy = accuracy_score(va_y, va_pred > 0.5)
+
+        #スコアの保存
+        scores_accuracy.append(accuracy)
+        scores_logloss.append(logloss)
+    #各スコアの平均
+    logloss = np.mean(scores_logloss)
+    accuracy = np.mean(scores_accuracy)
+    print(f"logloss: {logloss:.4f}, accuracy: {accuracy:.4f}")
+    exit()
+  
 
     #提出用ファイルの作成
     submission = pd.DataFrame({"PassengerId": test["PassengerId"], "Survived": pred_label})
